@@ -1,37 +1,42 @@
-/**
- * Welcome to Cloudflare Workers!
- *
- * This is a template for a Scheduled Worker: a Worker that can run on a
- * configurable interval:
- * https://developers.cloudflare.com/workers/platform/triggers/cron-triggers/
- *
- * - Run `npm run dev` in your terminal to start a development server
- * - Run `curl "http://localhost:8787/__scheduled?cron=*+*+*+*+*"` to see your worker in action
- * - Run `npm run deploy` to publish your worker
- *
- * Learn more at https://developers.cloudflare.com/workers/
- */
+import express from "express";
+import { createServer } from "http";
+import { Server } from "socket.io";
+import { fileURLToPath } from "url";
+import { dirname, join } from "path";
 
-export default {
-	async fetch(req) {
-		const url = new URL(req.url)
-		url.pathname = "/__scheduled";
-		url.searchParams.append("cron", "* * * * *");
-		return new Response(`To test the scheduled handler, ensure you have used the "--test-scheduled" then try running "curl ${url.href}".`);
-	},
+const app = express();
+const server = createServer(app);
+const io = new Server(server);
 
-	// The scheduled handler is invoked at the interval set in our wrangler.toml's
-	// [[triggers]] configuration.
-	async scheduled(event, env, ctx) {
-		// A Cron Trigger can make requests to other endpoints on the Internet,
-		// publish to a Queue, query a D1 Database, and much more.
-		//
-		// We'll keep it simple and make an API call to a Cloudflare API:
-		let resp = await fetch('https://api.cloudflare.com/client/v4/ips');
-		let wasSuccessful = resp.ok ? 'success' : 'fail';
+const __dirname = dirname(fileURLToPath(import.meta.url));
+app.use(express.static("public"));
 
-		// You could store this result in KV, write to a D1 Database, or publish to a Queue.
-		// In this template, we'll just log the result:
-		console.log(`trigger fired at ${event.cron}: ${wasSuccessful}`);
-	},
-};
+app.get("/", (req, res) => {
+    res.sendFile(join(__dirname, "/public/index.html"));
+});
+
+io.on("connection", (socket) => {
+    console.log(`User connected: ${socket.id}`);
+
+    // Handle creating and joining rooms
+    socket.on("createRoom", (room) => {
+        socket.join(room);
+        socket.emit("roomCreated", room); // Notify the creator
+        console.log(`Room created: ${room}`);
+    });
+
+    socket.on("joinRoom", (room) => {
+        socket.join(room);
+        socket.emit("roomJoined", room); // Notify the user joining
+        socket.to(room).emit("userJoined", socket.id); // Notify other users in the room
+        console.log(`User ${socket.id} joined room: ${room}`);
+    });
+
+    socket.on("disconnect", () => {
+        console.log(`User disconnected: ${socket.id}`);
+    });
+});
+
+server.listen(9000, () => {
+    console.log(`Server is listening on port 9000`);
+});
