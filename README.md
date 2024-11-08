@@ -1,1 +1,0 @@
-# virtual-event-collab-platform
